@@ -1,101 +1,175 @@
 import streamlit as st
 import tensorflow as tf
-import numpy as np
-import json
-
+from tensorflow.keras.models import load_model
 from PIL import Image
-from tensorflow.keras.preprocessing.image import img_to_array
+import numpy as np
+import matplotlib.pyplot as plt
 
-# Page title
+# -----------------------------
+# PAGE CONFIG
+# -----------------------------
 st.set_page_config(
     page_title="Road Damage Detection",
-    layout="centered"
+    page_icon="🛣️",
+    layout="wide"
 )
 
-st.title("Road Damage Detection System")
+# -----------------------------
+# LOAD MODEL
+# -----------------------------
+@st.cache_resource
+def load_cnn_model():
+    model = load_model("road_damage_model.h5")
+    return model
 
-st.write(
-    "Upload a road image to detect damage category."
-)
+model = load_cnn_model()
 
-# Load model
-model = tf.keras.models.load_model(
-    "road_damage_model.h5"
-)
+# Class labels
+class_names = ["Pothole", "Crack", "Normal Road"]
 
-# Load label mapping
-with open(
-    "label_mapping.json",
-    "r"
-) as f:
-    label_mapping = json.load(f)
+# -----------------------------
+# SECTION 1 — HEADER
+# -----------------------------
+st.title("AI-Based Road Damage Detection System")
+st.subheader("Smart City Infrastructure Monitoring using CNN")
 
-# Reverse label mapping
-class_names = {
-    value:key
-    for key, value
-    in label_mapping.items()
-}
+st.markdown("---")
 
-# Upload image
+# -----------------------------
+# SECTION 2 — ABOUT PROJECT
+# -----------------------------
+st.header("About the Project")
+
+st.write("""
+Road monitoring is important for ensuring transportation safety,
+reducing accidents, and maintaining infrastructure quality.
+Poor road conditions such as potholes and cracks can damage vehicles
+and create dangerous driving situations.
+
+This system uses **Convolutional Neural Networks (CNN)**, a deep learning
+technique specialized for **computer vision and image recognition**,
+to automatically detect road damage from images.
+
+### Industry Applications
+- Smart City Infrastructure Monitoring
+- Highway Maintenance Systems
+- Municipal Road Inspection
+- AI-based Transportation Safety
+""")
+
+st.markdown("---")
+
+# -----------------------------
+# SECTION 3 — UPLOAD AREA
+# -----------------------------
+st.header("Upload Road Image")
+
 uploaded_file = st.file_uploader(
-    "Upload a Road Image",
+    "Choose a road image",
     type=["jpg", "jpeg", "png"]
 )
 
+# -----------------------------
+# IMAGE PROCESSING FUNCTION
+# -----------------------------
+def preprocess_image(image):
+    image = image.resize((224, 224))  # change if your model input differs
+    image = np.array(image)
+
+    if image.shape[-1] == 4:
+        image = image[:, :, :3]
+
+    image = image / 255.0
+    image = np.expand_dims(image, axis=0)
+
+    return image
+
+
 if uploaded_file is not None:
 
-    image = Image.open(
-        uploaded_file
-    )
+    image = Image.open(uploaded_file)
 
-    # Show image preview
+    # -----------------------------
+    # SECTION 4 — IMAGE PREVIEW
+    # -----------------------------
+    st.header("Uploaded Image Preview")
+
     st.image(
         image,
-        caption="Uploaded Image",
+        caption="Uploaded Road Image",
         use_container_width=True
     )
 
-    # Resize image
-    image = image.resize(
-        (128,128)
-    )
+    # -----------------------------
+    # PREDICTION
+    # -----------------------------
+    processed_image = preprocess_image(image)
 
-    # Convert to array
-    image_array = img_to_array(
-        image
-    )
+    prediction = model.predict(processed_image)
 
-    image_array = np.expand_dims(
-        image_array,
-        axis=0
-    )
+    predicted_index = np.argmax(prediction)
+    predicted_label = class_names[predicted_index]
+    confidence = float(np.max(prediction)) * 100
 
-    # Normalize
-    image_array = image_array / 255.0
+    # Severity logic
+    if predicted_label == "Pothole":
+        severity = "High"
+    elif predicted_label == "Crack":
+        severity = "Medium"
+    else:
+        severity = "Low"
 
-    # Prediction
-    prediction = model.predict(
-        image_array
-    )
+    # -----------------------------
+    # SECTION 5 — PREDICTION AREA
+    # -----------------------------
+    st.markdown("---")
+    st.header("Prediction Results")
 
-    predicted_index = np.argmax(
-        prediction
-    )
+    st.success(f"Prediction: {predicted_label}")
+    st.info(f"Confidence: {confidence:.2f}%")
+    st.warning(f"Severity: {severity}")
 
-    confidence = np.max(
-        prediction
-    ) * 100
+    # -----------------------------
+    # SECTION 6 — VISUALIZATION
+    # -----------------------------
+    st.markdown("---")
+    st.header("Visualization Area")
 
-    predicted_class = class_names[
-        predicted_index
-    ]
+    probabilities = prediction[0] * 100
 
-    # Show result
-    st.success(
-        f"Prediction: {predicted_class}"
-    )
+    fig, ax = plt.subplots(figsize=(8, 4))
 
-    st.info(
-        f"Confidence Score: {confidence:.2f}%"
-    )
+    ax.bar(class_names, probabilities)
+
+    ax.set_ylabel("Confidence (%)")
+    ax.set_xlabel("Damage Type")
+    ax.set_title("Class Confidence Graph")
+
+    st.pyplot(fig)
+
+    # -----------------------------
+    # SECTION 7 — RECOMMENDATIONS
+    # -----------------------------
+    st.markdown("---")
+    st.header("Recommendations")
+
+    if predicted_label == "Pothole":
+        st.error("""
+        Immediate maintenance recommended.
+        High-risk road condition detected.
+        Drivers should proceed with caution.
+        """)
+
+    elif predicted_label == "Crack":
+        st.warning("""
+        Road repair should be scheduled soon.
+        Moderate safety risk detected.
+        Continuous monitoring is recommended.
+        """)
+
+    else:
+        st.success("""
+        No urgent maintenance required.
+        Road condition appears safe.
+        Continue regular monitoring.
+        """)
